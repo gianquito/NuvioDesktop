@@ -1,11 +1,14 @@
 package com.nuvio.app.features.catalog
 
+import com.nuvio.app.core.time.EpisodeReleaseDatePlatform
 import com.nuvio.app.features.addons.AddonCatalog
+import com.nuvio.app.features.addons.AddonHttpCache
 import com.nuvio.app.features.addons.buildAddonResourceUrl
 import com.nuvio.app.features.addons.fetchAddonResponseText
 import com.nuvio.app.features.home.HomeCatalogParser
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.stableKey
+import com.nuvio.app.features.profiles.ProfilePinCrypto
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +19,9 @@ import kotlinx.coroutines.sync.withLock
 
 const val CATALOG_PAGE_SIZE = 100
 private const val DUPLICATE_CATALOG_PAGE_ADVANCE_LIMIT = 3
+
+/** How long a catalog response stays usable from the local disk cache. */
+private const val CATALOG_CACHE_MAX_AGE_MS = 60 * 60 * 1000L
 
 data class CatalogPage(
     val items: List<MetaPreview>,
@@ -36,6 +42,17 @@ private suspend fun deduplicatedHttpGetText(
     url: String,
     forceRefresh: Boolean,
 ): String {
+    val cacheKey = ProfilePinCrypto.sha256Hex(url)
+    if (!forceRefresh) {
+        val cached = runCatching {
+            AddonHttpCache.load(
+                key = cacheKey,
+                nowEpochMs = EpisodeReleaseDatePlatform.nowEpochMs(),
+                maxAgeMs = CATALOG_CACHE_MAX_AGE_MS,
+            )
+        }.getOrNull()
+        if (cached != null) return cached
+    }
     val requestKey = CatalogFetchKey(
         url = url,
         forceRefresh = forceRefresh,
@@ -45,12 +62,16 @@ private suspend fun deduplicatedHttpGetText(
             inflightRequests[requestKey] = created
             inflightRequestScope.launch {
                 try {
-                    created.complete(
-                        fetchAddonResponseText(
-                            url = url,
-                            forceRefresh = forceRefresh,
-                        ),
+                    val payload = fetchAddonResponseText(
+                        url = url,
+                        forceRefresh = forceRefresh,
                     )
+                    // Persist fresh responses (forced refreshes included) so
+                    // the next launch can render catalogs instantly.
+                    runCatching {
+                        AddonHttpCache.save(key = cacheKey, payload = payload)
+                    }
+                    created.complete(payload)
                 } catch (error: Throwable) {
                     created.completeExceptionally(error)
                 } finally {

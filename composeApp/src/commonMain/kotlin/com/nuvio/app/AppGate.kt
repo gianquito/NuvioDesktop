@@ -43,6 +43,7 @@ import com.nuvio.app.features.collection.CollectionRepository
 import com.nuvio.app.features.collection.CollectionSyncService
 import com.nuvio.app.features.downloads.DownloadsRepository
 import com.nuvio.app.features.home.HomeCatalogSettingsRepository
+import com.nuvio.app.features.home.HomeRepository
 import com.nuvio.app.features.library.LibraryRepository
 import com.nuvio.app.features.membership.MemberAccessRepository
 import com.nuvio.app.features.notifications.EpisodeReleaseNotificationsRepository
@@ -62,28 +63,39 @@ import com.nuvio.app.features.watchprogress.ContinueWatchingEnrichmentCache
 import com.nuvio.app.features.watchprogress.WatchProgressRepository
 import com.nuvio.app.navigation.AppRoute
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 internal suspend fun warmProfileBoundRepositories() {
     withContext(Dispatchers.Default) {
-        AddonRepository.initialize()
-        CollectionRepository.initialize()
+        val addonsReady = async { AddonRepository.initialize() }
+        val collectionsReady = async { CollectionRepository.initialize() }
+        addonsReady.await()
+        collectionsReady.await()
+
         val enabledAddons = AddonRepository.uiState.value.addons.enabledAddons()
-        ContinueWatchingPreferencesRepository.ensureLoaded()
-        DownloadsRepository.ensureLoaded()
-        EpisodeReleaseNotificationsRepository.ensureLoaded()
-        HomeCatalogSettingsRepository.syncCatalogs(enabledAddons)
-        LibraryRepository.ensureLoaded()
-        P2pSettingsRepository.ensureLoaded()
-        PlayerSettingsRepository.ensureLoaded()
-        TraktAuthRepository.ensureLoaded()
-        TraktSettingsRepository.ensureLoaded()
-        WatchedRepository.ensureLoaded()
-        WatchProgressRepository.ensureLoaded()
-        ContinueWatchingEnrichmentCache.warm(ProfileRepository.activeProfileId)
-        CollectionSyncService.startObserving()
-        ProfileSettingsSync.startObserving()
+        coroutineScope {
+            listOf(
+                async { HomeCatalogSettingsRepository.syncCatalogs(enabledAddons) },
+                async { HomeRepository.refresh(enabledAddons) },
+                async { ContinueWatchingPreferencesRepository.ensureLoaded() },
+                async { DownloadsRepository.ensureLoaded() },
+                async { EpisodeReleaseNotificationsRepository.ensureLoaded() },
+                async { LibraryRepository.ensureLoaded() },
+                async { P2pSettingsRepository.ensureLoaded() },
+                async { PlayerSettingsRepository.ensureLoaded() },
+                async { TraktAuthRepository.ensureLoaded() },
+                async { TraktSettingsRepository.ensureLoaded() },
+                async { WatchedRepository.ensureLoaded() },
+                async { WatchProgressRepository.ensureLoaded() },
+                async { ContinueWatchingEnrichmentCache.warm(ProfileRepository.activeProfileId) },
+                async { CollectionSyncService.startObserving() },
+                async { ProfileSettingsSync.startObserving() },
+            ).awaitAll()
+        }
     }
 }
 

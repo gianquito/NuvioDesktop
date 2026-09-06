@@ -5,6 +5,17 @@ internal expect object AddonStorage {
     fun saveInstalledAddonUrls(profileId: Int, urls: List<String>)
     fun loadAddonEnabledStates(profileId: Int): Map<String, Boolean>
     fun saveAddonEnabledStates(profileId: Int, states: Map<String, Boolean>)
+    fun loadCachedManifests(profileId: Int): Map<String, String>
+    fun saveCachedManifests(profileId: Int, manifests: Map<String, String>)
+}
+
+/** Disk cache for addon HTTP responses, keyed by URL hash. */
+internal expect object AddonHttpCache {
+    /** Returns the cached payload for [key] if present and newer than [maxAgeMs], otherwise null. */
+    fun load(key: String, nowEpochMs: Long, maxAgeMs: Long): String?
+
+    /** Persists [payload] for [key], replacing any existing entry. */
+    fun save(key: String, payload: String)
 }
 
 data class RawHttpResponse(

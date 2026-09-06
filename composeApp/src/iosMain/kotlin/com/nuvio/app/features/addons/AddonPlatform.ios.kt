@@ -59,6 +59,20 @@ actual object AddonStorage {
             forKey = "${addonEnabledStatesKey}_$profileId",
         )
     }
+
+    actual fun loadCachedManifests(profileId: Int): Map<String, String> = emptyMap()
+
+    actual fun saveCachedManifests(profileId: Int, manifests: Map<String, String>) {
+        // No-op: manifest caching is desktop-only.
+    }
+}
+
+internal actual object AddonHttpCache {
+    actual fun load(key: String, nowEpochMs: Long, maxAgeMs: Long): String? = null
+
+    actual fun save(key: String, payload: String) {
+        // No-op: catalog response caching is desktop-only.
+    }
 }
 
 private fun parseEnabledStateLine(line: String): Pair<String, Boolean>? {

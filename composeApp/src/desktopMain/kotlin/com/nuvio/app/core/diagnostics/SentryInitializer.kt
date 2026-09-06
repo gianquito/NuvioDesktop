@@ -26,8 +26,12 @@ object SentryInitializer {
     fun start() {
         if (started || !SentrySettingsRepository.isSupported) return
         started = true
-        SentrySettingsRepository.ensureLoaded()
-        applyEnabled(SentrySettingsRepository.enabled.value)
+        // Sentry.init (cache dirs, background threads, DSN wiring) is not needed
+        // before the first frame, so don't let it delay window/Compose startup.
+        scope.launch {
+            SentrySettingsRepository.ensureLoaded()
+            applyEnabled(SentrySettingsRepository.enabled.value)
+        }
         scope.launch {
             SentrySettingsRepository.enabled.drop(1).collect(::applyEnabled)
         }

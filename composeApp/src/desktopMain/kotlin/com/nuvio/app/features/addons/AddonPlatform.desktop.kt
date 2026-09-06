@@ -41,6 +41,55 @@ internal actual object AddonStorage {
     actual fun saveAddonEnabledStates(profileId: Int, states: Map<String, Boolean>) {
         store.putString("addon_enabled_states_$profileId", json.encodeToString(states))
     }
+
+    actual fun loadCachedManifests(profileId: Int): Map<String, String> =
+        store.getString("cached_manifests_$profileId")
+            ?.let { payload -> runCatching { json.decodeFromString<Map<String, String>>(payload) }.getOrNull() }
+            ?: emptyMap()
+
+    actual fun saveCachedManifests(profileId: Int, manifests: Map<String, String>) {
+        store.putString("cached_manifests_$profileId", json.encodeToString(manifests))
+    }
+}
+
+internal actual object AddonHttpCache {
+    private val directory: java.nio.file.Path by lazy {
+        DesktopStorage.cacheDir.resolve("addon-http-cache")
+    }
+
+    actual fun load(key: String, nowEpochMs: Long, maxAgeMs: Long): String? = runCatching {
+        val file = directory.resolve("$key.json")
+        if (!java.nio.file.Files.exists(file)) return null
+        val lastModified = java.nio.file.Files.getLastModifiedTime(file).toMillis()
+        if (nowEpochMs - lastModified > maxAgeMs) {
+            java.nio.file.Files.deleteIfExists(file)
+            return null
+        }
+        java.nio.file.Files.readAllBytes(file).toString(Charsets.UTF_8)
+    }.getOrNull()
+
+    actual fun save(key: String, payload: String) {
+        runCatching {
+            java.nio.file.Files.createDirectories(directory)
+            val file = directory.resolve("$key.json")
+            val pending = java.nio.file.Files.createTempFile(directory, key, ".part")
+            try {
+                java.nio.file.Files.write(pending, payload.toByteArray(Charsets.UTF_8))
+                runCatching {
+                    java.nio.file.Files.move(
+                        pending,
+                        file,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    )
+                }.getOrElse {
+                    java.nio.file.Files.move(pending, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                }
+            } finally {
+                java.nio.file.Files.deleteIfExists(pending)
+            }
+        }
+    }
 }
 
 private val desktopHttpClient = OkHttpClient.Builder()
@@ -50,6 +99,19 @@ private val desktopHttpClient = OkHttpClient.Builder()
     .writeTimeout(60, TimeUnit.SECONDS)
     .followRedirects(true)
     .followSslRedirects(true)
+    .apply {
+        // HTTP-semantics disk cache (honors Cache-Control/ETag where addon
+        // servers provide them)
+        runCatching {
+            java.nio.file.Files.createDirectories(DesktopStorage.cacheDir.resolve("addon-http-okhttp"))
+            cache(
+                okhttp3.Cache(
+                    java.io.File(DesktopStorage.cacheDir.resolve("addon-http-okhttp").toString()),
+                    50L * 1024L * 1024L,
+                ),
+            )
+        }
+    }
     .build()
 
 private const val truncationSuffix = "\n...[truncated]"

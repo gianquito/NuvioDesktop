@@ -1,10 +1,12 @@
 package com.nuvio.app.features.addons
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.Serializable
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.generic_addon
 import org.jetbrains.compose.resources.getString
 
+@Serializable
 data class AddonManifest(
     val id: String,
     val name: String,
@@ -19,12 +21,14 @@ data class AddonManifest(
     val transportUrl: String,
 )
 
+@Serializable
 data class AddonResource(
     val name: String,
     val types: List<String>,
     val idPrefixes: List<String> = emptyList(),
 )
 
+@Serializable
 data class AddonCatalog(
     val type: String,
     val id: String,
@@ -32,6 +36,7 @@ data class AddonCatalog(
     val extra: List<AddonExtraProperty> = emptyList(),
 )
 
+@Serializable
 data class AddonExtraProperty(
     val name: String,
     val isRequired: Boolean = false,
@@ -39,6 +44,7 @@ data class AddonExtraProperty(
     val optionsLimit: Int? = null,
 )
 
+@Serializable
 data class AddonBehaviorHints(
     val configurable: Boolean = false,
     val configurationRequired: Boolean = false,

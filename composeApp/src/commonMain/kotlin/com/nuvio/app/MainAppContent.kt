@@ -500,7 +500,8 @@ internal fun MainAppContent(
         if (!ownsAppRuntime) return@LaunchedEffect
         NetworkStatusRepository.ensureStarted()
         EpisodeReleaseNotificationsRepository.refreshAsync()
-        kotlinx.coroutines.delay(5_000)
+        withFrameNanos { }
+        withFrameNanos { }
         initialHomeReady = true
     }
 
